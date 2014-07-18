@@ -5,7 +5,7 @@ if has_option("rocksdb"):
 
     env.Append( CPPDEFINES=["MONGO_ROCKSDB"] )
     #z and bz2 are dependencies for rocks
-    env.Append( LIBS=["rocksdb","z","bz2"] )
+    env.Append( LIBS=["rocksdb","z","bz2","hdfs"] )
 
     env.Library(
         target= 'storage_rocks_base',

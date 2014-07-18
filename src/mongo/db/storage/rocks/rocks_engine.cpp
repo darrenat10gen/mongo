@@ -37,6 +37,9 @@
 #include <rocksdb/slice.h>
 #include <rocksdb/options.h>
 
+#define USE_HDFS 1
+#include <rocks_hdfs/env_hdfs.h>
+
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/storage/rocks/rocks_collection_catalog_entry.h"
 #include "mongo/db/storage/rocks/rocks_database_catalog_entry.h"
@@ -54,7 +57,23 @@ namespace mongo {
     RocksEngine::RocksEngine( const std::string& path )
         : _path( path ), _db( NULL ) {
 
+        const char* HDFS_URI_VAR_NAME  = "MONGODB_HDFS_URI";
+        const char* hdfsVar = std::getenv(HDFS_URI_VAR_NAME);
+        if(hdfsVar == NULL){
+            error() << "hdfs error: " << HDFS_URI_VAR_NAME << " must be set to valid HDFS URI";
+            invariant( false );
+        }
+
+        boost::filesystem::path fullPath(path);
+	std::string dbPath(fullPath.filename().c_str());
+	std::string hdfsPath(std::getenv("MONGODB_HDFS_URI"));
+        log() << "dbPath" << dbPath << std::endl;
+        log() << "hdfsPath" << hdfsPath << std::endl;
+
+        rocksdb::DBOptions dbOptions;
+        dbOptions.env = new rocksdb::HdfsEnv(hdfsPath);
         rocksdb::Options options;
+        options.env = new rocksdb::HdfsEnv(hdfsPath);
 
         // Optimize RocksDB. This is the easiest way to get RocksDB to perform well
         options.IncreaseParallelism();
@@ -68,7 +87,7 @@ namespace mongo {
 
         if ( boost::filesystem::exists( path ) ) {
             std::vector<std::string> namespaces;
-            rocksdb::Status status = rocksdb::DB::ListColumnFamilies(options, path, &namespaces);
+            rocksdb::Status status = rocksdb::DB::ListColumnFamilies(dbOptions, dbPath, &namespaces);
             if ( status.IsIOError() ) {
                 // DNE, ok
             }
@@ -85,12 +104,12 @@ namespace mongo {
         }
 
         if ( families.empty() ) {
-            rocksdb::Status status = rocksdb::DB::Open(options, path, &_db);
+            rocksdb::Status status = rocksdb::DB::Open(options, dbPath, &_db);
             ROCK_STATUS_OK( status );
         }
         else {
             std::vector<rocksdb::ColumnFamilyHandle*> handles;
-            rocksdb::Status status = rocksdb::DB::Open(options, path, families, &handles, &_db);
+            rocksdb::Status status = rocksdb::DB::Open(options, dbPath, families, &handles, &_db);
             ROCK_STATUS_OK( status );
 
             invariant( handles.size() == families.size() );
